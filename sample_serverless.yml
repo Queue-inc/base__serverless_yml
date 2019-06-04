@@ -1,0 +1,269 @@
+# Application configure
+
+service: # サービス名 /* ここを埋める */
+
+provider:
+  name: aws
+  runtime: python3.6 # 使用する言語を指定する
+  stage: ${opt:stage, self:custom.defaultStage} 
+  profile: ${opt:profile, self:custom.defaultProfile} # profileオプション
+  region: ${opt:region, self:custom.defaultRegion} # リージョン
+  environment: # 環境変数を記述
+    env: ${self:provider.stage}
+
+custom:
+  defaultStage: dev # デフォルトはdevを指定している
+  defaultProfile: default
+  defaultRegion: ap-northeast-1
+  otherfile:
+    environment: # 各環境ファイルを読み込んでいる
+      dev: ${file(./conf/dev.yml)}
+      staging: ${file(./conf/staging.yml)}
+      prod: ${file(./conf/prod.yml)}
+  wsgi:
+    app: run.http_server
+    packRequirements: false
+  pythonRequirements:
+    dockerizeZip: non-linux
+  serverless-offline:
+    port: 8000
+  dynamodb:
+    start:
+      port: 3000
+      inMemory: true
+      migrate: true
+      seed: true
+    seed:
+      development:
+        sources:
+          - table: sample-${self:provider.stage} # テーブル名 /* ここを埋める */
+            sources: [./migrations/sample.json] # seedファイルpath /* ここを埋める */
+
+  # appsyncの設定以下
+  appSync:
+    - name: sample_${self:provider.stage} # appsync名 複数ある場合は先頭にハイフン(ex. - name)をつけることで記述可能。複数でない場合はハイフンは不要。
+      authenticationType: AMAZON_COGNITO_USER_POOLS # 認証先 AMAZON_COGNITO_USER_POOLS / API_KEY /* ここを埋める */
+      userPoolConfig:
+        awsRegion: # poolのregion /* ここを埋める */
+        userPoolId: # userpoolのID /* ここを埋める */
+          Ref: # userpoolは参照する場合はuserpoolのリソース名
+        defaultAction: ALLOW # ALLOW / DENY /* ここを埋める */
+      schema: # スキーマ defaultはschema.graphql /* ここを埋める */
+      dataSources: # データソース
+        - type: AMAZON_DYNAMODB # AMAZON_DYNAMODB / AMAZON_ELASTICSEARCH / AWS_LAMBDA ... /* ここを埋める */
+          name: # データソース名 /* ここを埋める */
+          description: # 説明文 /* ここを埋める */
+          config:
+            tableName: sample-${self:provider.stage} # テーブル名 /* ここを埋める */
+            serviceRoleArn: { Fn::GetAtt: ['ロール名', Arn] } # ロールARN /* ここを埋める */
+            region: # リージョン /* ここを埋める */
+      mappingTemplates:
+        - dataSource: # データソース名
+          type: Query # Query / Mutation ...etc
+          field: # フィールド名
+          request: 'sample-request-mapping-template.vtl' # リクエストのマッピングテンプレート
+          response: 'sample-response-mapping-template.vtl' # レスポンスのマッピングテンプレート
+
+resources:
+  Resources:
+    # DynamoDbの設定
+    Table: # 名前(ユニーク) /* ここを埋める */
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: # テーブル名 /* ここを埋める */
+        AttributeDefinitions: # Hashkey, Rangekey, GSIのHashkey, Rangekeyに指定する場合はここに記述が必須
+          - AttributeName: # 属性名 /* ここを埋める */
+            AttributeType: # 属性の型 ex. S, N, B ...etc /* ここを埋める */
+        KeySchema:
+          - AttributeName: # AttributeDefinitionsで指定したものの名前 /* ここを埋める */
+            KeyType: # HASH / RANGE /* ここを埋める */
+        ProvisionedThroughput:
+          ReadCapacityUnits: # 読み込みスループット ex. 1, 2, 3 ...etc /* ここを埋める */
+          WriteCapacityUnits: # 書き込みスループット ex. 1, 2, 3 ...etc /* ここを埋める */
+        GlobalSecondaryIndexes: # GSI 
+          - IndexName: # インデックス名 /* ここを埋める */
+            KeySchema:
+              - AttributeName: # インデックスの属性 /* ここを埋める */
+                KeyType: # HAAH / RANGE /* ここを埋める */
+            ProvisionedThroughput:
+              ReadCapacityUnits: # 読み込みスループット ex. 1, 2, 3 ...etc /* ここを埋める */
+              WriteCapacityUnits: # 書き込みスループット ex. 1, 2, 3 ...etc /* ここを埋める */
+            Projection:
+              ProjectionType: # 射影される属性 ALL / INCLUDE / KEYS_ONLY /* ここを埋める */
+
+    # Cognitoの設定              
+    UserPool: # 複数のuserpoolを作成する場合はここの名称を任意のものに変えて管理する
+      Type: AWS::Cognito::UserPool                                                     
+      Properties:
+        UserPoolName: # プール名 /* ここを埋める */
+        AdminCreateUserConfig:
+          AllowAdminCreateUserOnly: false # admin以外でユーザー作成の権限を与えるかの有無 true / false /* ここを埋める */
+          UnusedAccountValidityDays: 7 # 使用されていないアカウントの有効日数 /* ここを埋める */
+        AliasAttributes: # aliasの属性
+          - email # /* ここを埋める */
+        AutoVerifiedAttributes: # 属性の検証 email / phone_number 
+          - email # /* ここを埋める */
+        EmailVerificationMessage: "認証コードは {####} です。" # メール認証での文言 /* ここを埋める */
+        EmailVerificationSubject: "認証コード発行" # メール認証のタイトル /* ここを埋める */
+        MfaConfiguration: 'OFF' # 他要素認証 'ON' / 'OFF' / 'OPTIONAL' /* ここを埋める */
+        Policies:
+          PasswordPolicy: # パスワードポリシー
+            MinimumLength: 8 # パスワードの長さ /* ここを埋める */
+            RequireLowercase: false # 小文字を必要とするか true / false /* ここを埋める */
+            RequireNumbers: false # 数字を必要とするか true / false /* ここを埋める */ 
+            RequireSymbols: false # 特殊記号を必要とするか true / false /* ここを埋める */
+            RequireUppercase: false # 大文字を必要とするか true / false /* ここを埋める */
+        Schema: # 標準の属性に存在しないものを記述するとカスタム属性に追加される
+          - AttributeDataType: String # データ型 /* ここを埋める */
+            DeveloperOnlyAttribute: false # 属性タイプが開発者のみかの有無 true / false
+            Mutable: true # 後からの変更を許可するか /* ここを埋める */
+            Name: # カスタム属性名 /* ここを埋める */
+            StringAttributeConstraints:
+              MaxLength: 256 # 最長文字数 /* ここを埋める */
+              MinLength: 0 # 最短文字数 /* ここを埋める */
+            Required: false # 必須の有無 /* ここを埋める */                 
+    UserPoolClient: # 複数のuserpoolを作成する場合はここの名称を任意のものに変えて管理する
+      Type: AWS::Cognito::UserPoolClient
+      Properties:
+        ClientName: # アプリクライアント名 /* ここを埋める */
+        UserPoolId:
+          Ref: # UserPoolを指定するとUserPoolから反映される、または名前を指定する /* ここを埋める */
+        ExplicitAuthFlows:
+          - ADMIN_NO_SRP_AUTH # 認証フロー ADMIN_NO_SRP_AUTH / CUSTOM_AUTH_FLOW_ONLY / USER_PASSWORD_AUTH /* ここを埋める */
+        RefreshTokenValidity: 30 # tokenの更新日数 /* ここを埋める */           
+        ReadAttributes: # カスタム属性
+          - preferred_username # ←例 カスタム属性がある場合は'preferred_username'の箇所に追加する /* ここを埋める */
+        WriteAttributes:          
+          - preferred_username # ←例 カスタム属性がある場合は'preferred_username'の箇所に追加する /* ここを埋める */
+        GenerateSecret: false # クライアントシークレット作成の有無 true / false /* ここを埋める */
+    CognitoIdentityPool: # アイデンティティプール
+      Type: AWS::Cognito::IdentityPool        
+      Properties:
+        IdentityPoolName:
+        AllowUnauthenticatedIdentities: false # 認証されていないユーザーの許可有無 true / false /* ここを埋める */ 
+    UserCognitoIdentityPoolRoles: # アイデンティティプールのIAMロールアタッチメント        
+      Type: AWS::Cognito::IdentityPoolRoleAttachment
+      Properties:
+        IdentityPoolId:
+          Ref: UserCognitoIdentityPool
+        Roles:
+          authenticated: # 認証されているユーザーのロール 
+            Fn::Join: # 連結している
+              - ''
+              -
+                - 'arn:aws:iam:'
+                - ':'
+                - Ref: AWS::AccountId # アカウントIDを参照
+                - ':role/'
+                - Ref: UserCognitoAuthRole # UserCognitoAuthRoleを参照
+          unauthenticated: # 認証されていないユーザーのロール
+            Fn::Join:
+              - ''
+              -
+                - 'arn:aws:iam:'
+                - ':'
+                - Ref: AWS::AccountId # アカウントIDを参照
+                - ':role/'
+                - Ref: UserCognitoUnAuthRole # UserCognitoAuthRoleを参照
+    UserCognitoAuthRole: # cognitoのAuthロール(認証されている)
+      Type: AWS::IAM::Role
+      Properties:
+        Path: /
+        AssumeRolePolicyDocument: # Polycyを記述
+          Version: '2012-10-17'
+          Statement:
+            - Effect: 'Allow'
+              Principal:
+                Federated: 'cognito-identity.amazonaws.com'
+              Action:
+                - 'sts:AssumeRoleWithWebIdentity'
+              Condition:
+                StringEquals:
+                  'cognito-identity.amazonaws.com:aud':
+                    Ref: UserCognitoIdentityPool
+                'ForAnyValue:StringLike':
+                  'cognito-identity.amazonaws.com:amr': authenticated     
+        Policies:                       
+          - PolicyName: # ポリシー名
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: 'Allow'
+                  Action:
+                    - 'mobileanalytics:PutEvents'
+                    - 'cognito-sync:*'
+                    - 'cognito-identity:*'
+                  Resource: '*'
+    UserCognitoUnAuthRole: # cognitoのAuthロール(認証されていない)
+      Type: AWS::IAM::Role
+      Properties:
+        Path: /
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: 'Allow'
+              Principal:
+                Federated: 'cognito-identity.amazonaws.com'
+              Action:
+                - 'sts:AssumeRoleWithWebIdentity'
+              Condition:
+                StringEquals:
+                  'cognito-identity.amazonaws.com:aud':
+                    Ref: UserCognitoIdentityPool
+                'ForAnyValue:StringLike':
+                  'cognito-identity.amazonaws.com:amr': unauthenticated      
+        Policies:                       
+          - PolicyName: # ポリシー名
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: 'Allow'
+                  Action:
+                    - 'mobileanalytics:PutEvents'
+                    - 'cognito-sync:*'
+                  Resource: '*'
+
+    AppSyncDynamoRole: # AppSyncのデータソースに許可するIAMロール
+      Type: AWS::IAM::Role
+      Properties:
+        Path: /
+        RoleName: # ロール名-${self:provider.stage}
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: 'appsync.amazonaws.com'
+              Action:
+                - 'sts:AssumeRole'
+        Policies:                       
+          - PolicyName: # ポリシー名-${self:provider.stage}
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: 'Allow'
+                  Action: # 許可するActionを記述
+                    - 'dynamodb:DeleteItem'
+                    - 'dynamodb:GetItem'
+                    - 'dynamodb:PutItem'
+                    - 'dynamodb:Query'
+                    - 'dynamodb:Scan'
+                    - 'dynamodb:UpdateItem'
+                  Resource: # 参照するデータソースを記述
+                    - { "Fn::GetAtt": ["データソース名", "Arn"] }                                  
+
+plugins:
+  - serverless-python-requirements # requirements.txtのライブラリを読み込める
+  - serverless-wsgi # lambdaへのリクエストをwsgi用に変換する(Flask)
+  - serverless-dynamodb-local # ローカルでDynamoDBを扱う
+  - serverless-offline-python # ローカルでlambda + API Gatewayのエンドポイントをテストできる
+  - serverless-appsync-plugin # appSyncをserverless.ymlから読み込むプラグイン
+
+functions:
+  function_name: # 'function_name'を関数名に変更する /* ここを埋める */
+    handler: # handlerのpath /* ここを埋める */
+    events:
+      - http:
+          path: # endpoint /* ここを埋める */
+          method: # GET / POST / PUT / DELETE / OPTION ... /* ここを埋める */
+          cors: true # corsの有無 true / false /* ここを埋める */
